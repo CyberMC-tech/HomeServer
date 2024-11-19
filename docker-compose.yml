@@ -1,0 +1,246 @@
+# DESCRIPTION #
+# This docker-compose file is used to set up a Jellyfin-based media server
+# ecosystem. It includes services for managing and downloading movies, TV
+# shows, books, subtitles, and adult videos. Homarr is added for centralized
+# dashboard management of all services.
+
+# INFO #
+# I'll explain each service as we progress so you understand its role 
+# and how they all work together to create this complete media server solution.
+
+# LET'S BEGIN #
+
+version: '3.8'
+
+# Custom network for all containers
+networks:
+  arr:
+    driver: bridge
+
+services:
+  ## HOMARR ##
+  # Homarr is a sleek and customizable dashboard for your services.
+  # It allows you to monitor and interact with the media server stack easily.
+  homarr:
+    image: ghcr.io/ajnart/homarr:latest
+    container_name: homarr
+    environment:
+      - TZ=America/Indianapolis
+    volumes:
+      - ./homarr:/app/data/configs
+    ports:
+      - "7575:7575" # Homarr dashboard
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## PROWLARR ##
+  # Prowlarr is the indexer manager. It connects to indexer sites (for
+  # torrents and NZBs) to retrieve metadata and search for media.
+  # It integrates with Radarr, Sonarr, Readarr, etc.
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./prowlarr:/config
+    ports:
+      - "9696:9696"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## RADARR ##
+  # Radarr is used for managing and downloading movies.
+  # It communicates with Prowlarr for searching indexers and
+  # sends downloads to Qbittorrent or NZBGet.
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./radarr:/config
+      - ./downloads:/downloads
+      - ./movies:/movies
+    ports:
+      - "7878:7878"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## SONARR ##
+  # Sonarr manages TV shows. It searches for episodes using Prowlarr 
+  # and sends the download to Qbittorrent or NZBGet.
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./sonarr:/config
+      - ./downloads:/downloads
+      - ./tv:/tv
+    ports:
+      - "8989:8989"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## READARR ##
+  # Readarr manages e-books and audiobooks.
+  # Like Radarr and Sonarr, it integrates with Prowlarr and downloaders.
+  readarr:
+    image: lscr.io/linuxserver/readarr:latest
+    container_name: readarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./readarr:/config
+      - ./downloads:/downloads
+      - ./books:/books
+    ports:
+      - "8787:8787"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## WHISPAR ##
+  # Whisparr manages adult videos. It has similar functionality to Radarr.
+  whisparr:
+    image: lscr.io/linuxserver/whisparr:latest
+    container_name: whisparr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./whisparr:/config
+      - ./downloads:/downloads
+      - ./audiobooks:/audiobooks
+    ports:
+      - "6969:6969"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## BAZARR ##
+  # Bazarr is used for managing and downloading subtitles for TV shows and movies.
+  # It integrates with Radarr, Sonarr, and Jellyfin.
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./bazarr:/config
+      - ./tv:/tv
+      - ./movies:/movies
+    ports:
+      - "6767:6767"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## FLARESOLVERR ##
+  # Flaresolverr is a companion app for dealing with Cloudflare-protected sites.
+  # It can be used by indexers to bypass captchas.
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=America/Indianapolis
+    ports:
+      - "8191:8191"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## JELLYSEERR ##
+  # Jellyseerr is the request management frontend for Jellyfin.
+  # It allows users to request movies and TV shows.
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - TZ=America/Indianapolis
+    volumes:
+      - ./jellyseerr:/app/config
+    ports:
+      - "5055:5055"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## QBITTORRENT ##
+  # Qbittorrent is the torrent downloader. It works with Prowlarr to
+  # download media files.
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+      - WEBUI_PORT=8080
+    volumes:
+      - ./qbittorrent:/config
+      - ./downloads:/downloads
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## NZBGET ##
+  # NZBGet is the NZB downloader. It works with Prowlarr to
+  # download media files via Usenet.
+  nzbget:
+    image: lscr.io/linuxserver/nzbget:latest
+    container_name: nzbget
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./nzbget:/config
+      - ./downloads:/downloads
+    ports:
+      - "6789:6789"
+    networks:
+      - arr
+    restart: unless-stopped
+
+  ## JELLYFIN ##
+  # Jellyfin is the media server frontend. It streams your content 
+  # to your devices and acts as the Netflix-like hub for your library.
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/Indianapolis
+    volumes:
+      - ./jellyfin:/config
+      - ./media:/media
+    ports:
+      - "8096:8096" # HTTP
+      - "8920:8920" # HTTPS
+    networks:
+      - arr
+    restart: unless-stopped
